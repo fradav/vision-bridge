@@ -53,13 +53,18 @@ GITHUB_TOKEN=<token> \
 
 ### Install the tool from GitHub Packages
 
-Add the feed and install the global tool:
+Add the feed and install the global tool. The `<token>` must be a GitHub PAT with
+the `read:packages` scope (a `write:packages` token also works). GitHub Packages
+requires authentication even for public repos:
 
 ```sh
 dotnet nuget add source https://nuget.pkg.github.com/fradav/index.json \
   --name GitHubPackages --username <user> --password <token> --store-password-in-clear-text
 dotnet tool install -g vision-bridge
 ```
+
+> Note: the CD workflow's `test-tools` job installs from this feed automatically
+> (its `GITHUB_TOKEN` has the packages scope), so this is verified on every publish.
 
 Verify it works: with `OPENAI_BASE_URL`/`OPENAI_MODEL` set, `vision-bridge --smoke`
 runs the real-endpoint smoke test.
