@@ -35,13 +35,43 @@ type VisionTools() =
 
 module Program =
 
+    /// Sets the OPENAI_* env vars from CLI flags. CLI values take priority over any
+    /// pre-existing environment variables. Returns the argv with our flags stripped so
+    /// the host builder never sees them.
+    let private applyCliConfig (argv: string[]) : string[] =
+        let kept = ResizeArray<string>()
+        let rec go i =
+            if i < argv.Length then
+                let valueOf () =
+                    if i + 1 >= argv.Length then
+                        failwithf "Missing value for %s" argv.[i]
+                    argv.[i + 1]
+                match argv.[i] with
+                | "--endpoint" | "-e" ->
+                    Environment.SetEnvironmentVariable("OPENAI_BASE_URL", valueOf ())
+                    go (i + 2)
+                | "--model" | "-m" ->
+                    Environment.SetEnvironmentVariable("OPENAI_MODEL", valueOf ())
+                    go (i + 2)
+                | "--api-key" | "-k" ->
+                    Environment.SetEnvironmentVariable("OPENAI_API_KEY", valueOf ())
+                    go (i + 2)
+                | other ->
+                    kept.Add other
+                    go (i + 1)
+        go 0
+        kept.ToArray()
+
     [<EntryPoint>]
     let main argv =
+        // CLI config flags (--endpoint/--model/--api-key) override the OPENAI_* env vars.
+        let rest = applyCliConfig argv
+
         if argv |> Array.exists (fun a -> a = "--smoke") then
             // Functional smoke test against a live endpoint (FAKE SmokeTest target).
             Smoke.runSmoke ()
         else
-            let builder = Host.CreateApplicationBuilder argv
+            let builder = Host.CreateApplicationBuilder rest
 
             // All logs must go to stderr — stdout is reserved for the MCP stdio protocol.
             builder.Logging.AddConsole(fun o -> o.LogToStandardErrorThreshold <- LogLevel.Trace) |> ignore

@@ -24,6 +24,18 @@ environment variables, or pass them per-call as tool arguments:
 
 In the MCP tool schema only `image` is required — `endpoint`, `model` and `api_key` are optional and fall back to their `OPENAI_*` environment variables when omitted. Tool arguments take priority; the environment variables are the fallback.
 
+You can also configure the server itself at startup, via CLI flags or environment
+variables:
+
+| Flag | Env var | Purpose |
+|---|---|---|
+| `--endpoint` / `-e` | `OPENAI_BASE_URL` | OpenAI-compatible endpoint |
+| `--model` / `-m` | `OPENAI_MODEL` | Vision model name |
+| `--api-key` / `-k` | `OPENAI_API_KEY` | API key (optional) |
+
+CLI flags override the environment variables. Pass them in the `mcpServers` `args`
+(installed-tool form) or `args` of the `dotnet run` command (dev form).
+
 ## Running
 
 ```sh
@@ -92,7 +104,23 @@ Once installed, register the tool in any client's `mcpServers` map:
 ```
 
 The `args` are optional — the tool reads the endpoint/model from `env` (or per-call
-tool arguments). For the source checkout instead, use the dev config in `.mcp.json`
+tool arguments). You can also configure the server via CLI flags in `args` instead of
+`env` (CLI overrides env):
+
+```json
+{
+  "mcpServers": {
+    "vision-bridge": {
+      "type": "stdio",
+      "command": "vision-bridge",
+      "args": ["--endpoint", "http://localhost:8080/v1", "--model", "qwen3.6-moe:instruct"],
+      "env": {}
+    }
+  }
+}
+```
+
+For the source checkout instead, use the dev config in `.mcp.json`
 (see below).
 
 ## Registering with MCP clients
