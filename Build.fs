@@ -88,8 +88,8 @@ Target.create "Pack" (fun _ ->
     Trace.log (sprintf "Packing version: %s" version)
     Trace.log (sprintf "Output directory: %s" outputDir)
 
-    !!"/Users/fradav/Documents/Dev/AITools/mcp/vision-bridge/src/**/*.fsproj"
-    -- "/Users/fradav/Documents/Dev/AITools/mcp/vision-bridge/src/**/*.Tests.fsproj"
+    !!"src/**/*.fsproj"
+    -- "src/**/*.Tests.fsproj"
     |> Seq.iter (fun proj ->
         Trace.log (sprintf "Packing: %s" proj)
         let result =
