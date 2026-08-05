@@ -1,0 +1,32 @@
+name: Setup .NET & Restore
+description: Setup .NET SDK, restore Paket tools and NuGet packages
+
+inputs:
+  github-packages-url:
+    description: URL of the GitHub Packages NuGet feed
+    required: true
+  github-token:
+    description: GitHub token for authentication
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore .NET tools (Paket)
+      shell: bash
+      run: dotnet tool restore
+
+    - name: Restore NuGet packages
+      shell: bash
+      run: |
+        dotnet nuget add source "${{ inputs.github-packages-url }}" \
+          --name "GitHub Packages" \
+          --username "${{ github.actor }}" \
+          --password "${{ inputs.github-token }}" \
+          --store-password-in-clear-text
+        dotnet tool run paket restore

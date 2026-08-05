@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/vision-bridge.Tests/vision-bridge.Tests.fsproj" />
+  </Folder>
+</Solution>

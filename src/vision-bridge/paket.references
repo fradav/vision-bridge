@@ -1,0 +1,5 @@
+group Main
+  nuget ModelContextProtocol
+  nuget Microsoft.Extensions.Hosting
+  nuget SixLabors.ImageSharp
+  nuget FSharp.Core

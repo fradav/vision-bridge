@@ -1,0 +1,27 @@
+name: CI — Build & Test
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  GITHUB_PACKAGES_URL: "https://nuget.pkg.github.com/fradav/index.json"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup & Restore
+        uses: ./.github/actions/setup-dotnet
+        with:
+          github-packages-url: ${{ env.GITHUB_PACKAGES_URL }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run tests via FAKE
+        run: dotnet run --project Build.fsproj -- -t Test

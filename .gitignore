@@ -1,0 +1,10 @@
+bin/
+obj/
+nupkg/
+.paket/
+packages/
+paket-files/
+TestResults/
+*.user
+.vs/
+.vscode/

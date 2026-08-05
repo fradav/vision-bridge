@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "vision-bridge": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--no-build",
+        "--project",
+        "src/vision-bridge/vision-bridge.fsproj"
+      ],
+      "env": {
+        "OPENAI_BASE_URL": "http://localhost:8080/v1",
+        "OPENAI_MODEL": "qwen3.6-moe:instruct"
+      }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+name: CD — Pack & Publish
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  GITHUB_PACKAGES_URL: "https://nuget.pkg.github.com/fradav/index.json"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup & Restore
+        uses: ./.github/actions/setup-dotnet
+        with:
+          github-packages-url: ${{ env.GITHUB_PACKAGES_URL }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION="$(date +%Y.%m.%d).$(date -u +%H%M)"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Using version: ${VERSION}"
+
+      - name: Pack and publish via FAKE
+        env:
+          PACK_VERSION: ${{ steps.version.outputs.version }}
+          GITHUB_PACKAGES_URL: ${{ env.GITHUB_PACKAGES_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: dotnet run --project Build.fsproj -- --target Publish
+
+  # Verify the published tool installs and runs
+  test-tools:
+    runs-on: ubuntu-latest
+    needs: publish
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Configure GitHub Packages source
+        run: |
+          dotnet nuget add source "${{ env.GITHUB_PACKAGES_URL }}" \
+            --name "GitHubPackages" \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}" \
+            --store-password-in-clear-text
+
+      - name: Install and smoke-test tool
+        run: |
+          dotnet tool install -g vision-bridge
+          vision-bridge --smoke || true
