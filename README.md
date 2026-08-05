@@ -22,7 +22,7 @@ environment variables, or pass them per-call as tool arguments:
 | Model (e.g. `qwen3.6-moe:instruct`) | `OPENAI_MODEL` | `model` |
 | API key (optional, e.g. `sk-...`) | `OPENAI_API_KEY` | `api_key` |
 
-Tool arguments take priority; the environment variables are the fallback.
+In the MCP tool schema only `image` is required — `endpoint`, `model` and `api_key` are optional and fall back to their `OPENAI_*` environment variables when omitted. Tool arguments take priority; the environment variables are the fallback.
 
 ## Running
 

@@ -45,6 +45,9 @@ module Vision =
 
         if isUrl then
             use client = new HttpClient()
+            // Wikimedia and other hosts reject requests without a descriptive
+            // User-Agent, so send one on outbound image fetches.
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("vision-bridge/1.0 (+https://github.com/fradav/vision-bridge)")
             use! resp = client.GetAsync(image, ct)
             resp.EnsureSuccessStatusCode() |> ignore
             return! resp.Content.ReadAsByteArrayAsync()
@@ -116,6 +119,7 @@ module Vision =
         let payload = buildPayload config.Model prompt imageDataUrl
 
         use client = new HttpClient()
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("vision-bridge/1.0 (+https://github.com/fradav/vision-bridge)")
         if not (String.IsNullOrWhiteSpace config.ApiKey) then
             client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Bearer", config.ApiKey)
         use body = new StringContent(payload, Encoding.UTF8, "application/json")
