@@ -35,7 +35,7 @@ Target.create "BuildRelease" (fun _ ->
 
 Target.create "Test" (fun _ ->
     let exitCode =
-        !!"/Users/fradav/Documents/Dev/AITools/mcp/vision-bridge/src/**/*.Tests.fsproj"
+        !!"src/**/*.Tests.fsproj"
         |> Seq.map (fun proj ->
             let result =
                 DotNet.exec
@@ -101,11 +101,10 @@ Target.create "Pack" (fun _ ->
         if not result.OK then
             failwithf "Pack failed for %s with exit code %d" proj result.ExitCode)
 
-    if Directory.Exists outputDir then
-        Directory.GetFiles(outputDir, "*.nupkg")
-        |> Array.iter (fun f -> Trace.log (sprintf "Generated: %s" f))
-    else
-        failwithf "Output directory %s does not exist after packing" outputDir
+    let generated = Directory.GetFiles(outputDir, "*.nupkg")
+    if generated.Length = 0 then
+        failwithf "Pack produced no .nupkg files in %s" outputDir
+    generated |> Array.iter (fun f -> Trace.log (sprintf "Generated: %s" f))
 
     Trace.log "Pack done")
 
@@ -124,7 +123,11 @@ Target.create "Publish" (fun _ ->
 
     let outputDir = Path.Combine(repoRoot, "nupkg")
 
-    Directory.GetFiles(outputDir, "*.nupkg")
+    let nupkgs = Directory.GetFiles(outputDir, "*.nupkg")
+    if nupkgs.Length = 0 then
+        failwithf "No .nupkg files found in %s to publish" outputDir
+
+    nupkgs
     |> Array.iter (fun nupkg ->
         Trace.log (sprintf "Publishing: %s" nupkg)
         let result =
