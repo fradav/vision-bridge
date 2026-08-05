@@ -20,6 +20,7 @@ environment variables, or pass them per-call as tool arguments:
 |---|---|---|
 | Endpoint (e.g. `http://localhost:8080/v1`) | `OPENAI_BASE_URL` | `endpoint` |
 | Model (e.g. `qwen3.6-moe:instruct`) | `OPENAI_MODEL` | `model` |
+| API key (optional, e.g. `sk-...`) | `OPENAI_API_KEY` | `api_key` |
 
 Tool arguments take priority; the environment variables are the fallback.
 
@@ -82,7 +83,8 @@ Once installed, register the tool in any client's `mcpServers` map:
       "args": [],
       "env": {
         "OPENAI_BASE_URL": "http://localhost:8080/v1",
-        "OPENAI_MODEL": "qwen3.6-moe:instruct"
+        "OPENAI_MODEL": "qwen3.6-moe:instruct",
+        "OPENAI_API_KEY": ""
       }
     }
   }
@@ -118,7 +120,8 @@ claude mcp add vision-bridge --type stdio --config .mcp.json
       "args": ["run", "--no-build", "--project", "src/vision-bridge/vision-bridge.fsproj"],
       "env": {
         "OPENAI_BASE_URL": "http://localhost:8080/v1",
-        "OPENAI_MODEL": "qwen3.6-moe:instruct"
+        "OPENAI_MODEL": "qwen3.6-moe:instruct",
+        "OPENAI_API_KEY": ""
       }
     }
   }
@@ -137,7 +140,8 @@ your Copilot MCP config (e.g. `.github/copilot-mcp.json` or the editor settings)
       "args": ["run", "--no-build", "--project", "src/vision-bridge/vision-bridge.fsproj"],
       "env": {
         "OPENAI_BASE_URL": "http://localhost:8080/v1",
-        "OPENAI_MODEL": "qwen3.6-moe:instruct"
+        "OPENAI_MODEL": "qwen3.6-moe:instruct",
+        "OPENAI_API_KEY": ""
       }
     }
   }
@@ -175,6 +179,8 @@ Run it (requires a live endpoint + model via env vars):
 OPENAI_BASE_URL=http://localhost:8080/v1 OPENAI_MODEL=qwen3.6-moe:instruct \
   dotnet run --project Build.fsproj -- -t SmokeTest
 ```
+
+`OPENAI_API_KEY` is optional — set it only if the endpoint requires a key.
 
 The task builds the app, then runs `vision-bridge --smoke`. For each tool it
 exercises **both** input modes against real images: a local file path and an

@@ -51,16 +51,20 @@ let imageTests =
             // set then unset to avoid leaking state
             Environment.SetEnvironmentVariable("OPENAI_BASE_URL", "http://localhost:8080/v1")
             Environment.SetEnvironmentVariable("OPENAI_MODEL", "qwen3.6-moe:instruct")
-            let cfg = Vision.resolveConfig "" ""
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", "sk-test-123")
+            let cfg = Vision.resolveConfig "" "" ""
             Expect.equal cfg.Endpoint "http://localhost:8080/v1" "endpoint from env"
             Expect.equal cfg.Model "qwen3.6-moe:instruct" "model from env"
+            Expect.equal cfg.ApiKey "sk-test-123" "apiKey from env"
 
-            let cfg2 = Vision.resolveConfig "http://override/v1" "override-model"
+            let cfg2 = Vision.resolveConfig "http://override/v1" "override-model" "sk-override"
             Expect.equal cfg2.Endpoint "http://override/v1" "endpoint override wins"
             Expect.equal cfg2.Model "override-model" "model override wins"
+            Expect.equal cfg2.ApiKey "sk-override" "apiKey override wins"
 
             Environment.SetEnvironmentVariable("OPENAI_BASE_URL", null)
             Environment.SetEnvironmentVariable("OPENAI_MODEL", null)
+            Environment.SetEnvironmentVariable("OPENAI_API_KEY", null)
         }
     ]
 
@@ -106,14 +110,14 @@ let integrationTests =
                 let tmp = Path.Combine(Path.GetTempPath(), "vb-test.png")
                 File.WriteAllBytes(tmp, imageBytes)
                 let r1 =
-                    Vision.analyzeImage tmp baseUrl "mock-model" CancellationToken.None
+                    Vision.analyzeImage tmp baseUrl "mock-model" "" CancellationToken.None
                     |> Async.AwaitTask
                     |> Async.RunSynchronously
                 Expect.equal r1 "MOCK-OK" "analyze_image on a local file"
 
                 // URL -> ocr_image
                 let r2 =
-                    Vision.ocrImage (baseUrl + "/image.png") baseUrl "mock-model" CancellationToken.None
+                    Vision.ocrImage (baseUrl + "/image.png") baseUrl "mock-model" "" CancellationToken.None
                     |> Async.AwaitTask
                     |> Async.RunSynchronously
                 Expect.equal r2 "MOCK-OK" "ocr_image from a URL"

@@ -24,13 +24,13 @@ module Smoke =
     /// Runs a vision function against `input` (a local path or a URL), labels the
     /// result, and returns Some(text) on success or None on failure.
     let private run
-        (f: string -> string -> string -> CancellationToken -> Task<string>)
+        (f: string -> string -> string -> string -> CancellationToken -> Task<string>)
         (label: string)
         (input: string)
         (cfg: Vision.Config)
         : string option =
         try
-            let text = f input cfg.Endpoint cfg.Model CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
+            let text = f input cfg.Endpoint cfg.Model cfg.ApiKey CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
             printfn "SMOKE: %s -> %s" label text
             Some text
         with ex ->
@@ -45,7 +45,7 @@ module Smoke =
     /// path and an http(s) URL (the samples are served by a short-lived local
     /// HTTP server). Returns a process exit code.
     let runSmoke () : int =
-        let cfg = Vision.resolveConfig "" ""
+        let cfg = Vision.resolveConfig "" "" ""
 
         if String.IsNullOrWhiteSpace cfg.Endpoint || String.IsNullOrWhiteSpace cfg.Model then
             eprintfn "SMOKE: OPENAI_BASE_URL and/or OPENAI_MODEL not set — cannot run the real-endpoint smoke test."
@@ -54,7 +54,7 @@ module Smoke =
             let photo = Path.Combine(samplesDir, "photo.jpg")
             let sign = Path.Combine(samplesDir, "text-sign.jpg")
 
-            printfn "SMOKE: endpoint=%s model=%s" cfg.Endpoint cfg.Model
+            printfn "SMOKE: endpoint=%s model=%s apiKey=%s" cfg.Endpoint cfg.Model (if String.IsNullOrWhiteSpace cfg.ApiKey then "(none)" else "set")
 
             use listener = new HttpListener()
             let port = freePort ()

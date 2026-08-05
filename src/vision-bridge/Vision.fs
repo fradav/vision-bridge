@@ -3,6 +3,7 @@ namespace VisionBridge
 open System
 open System.IO
 open System.Net.Http
+open System.Net.Http.Headers
 open System.Text
 open System.Text.Json
 open System.Text.Json.Nodes
@@ -19,18 +20,19 @@ module Vision =
     /// Maximum image dimension sent to the vision endpoint (OpenAI guidance).
     let private maxDimension = 1568
 
-    type Config = { Endpoint: string; Model: string }
+    type Config = { Endpoint: string; Model: string; ApiKey: string }
 
     let private env (name: string) =
         Environment.GetEnvironmentVariable name
         |> Option.ofObj
         |> Option.defaultValue ""
 
-    /// Resolves endpoint/model: explicit tool arguments take priority, and
-    /// OPENAI_BASE_URL / OPENAI_MODEL environment variables are the fallback.
-    let resolveConfig (endpoint: string) (model: string) : Config =
+    /// Resolves endpoint/model/apiKey: explicit tool arguments take priority, and
+    /// OPENAI_BASE_URL / OPENAI_MODEL / OPENAI_API_KEY env vars are the fallback.
+    let resolveConfig (endpoint: string) (model: string) (apiKey: string) : Config =
         { Endpoint = if String.IsNullOrWhiteSpace endpoint then env "OPENAI_BASE_URL" else endpoint
-          Model = if String.IsNullOrWhiteSpace model then env "OPENAI_MODEL" else model }
+          Model = if String.IsNullOrWhiteSpace model then env "OPENAI_MODEL" else model
+          ApiKey = if String.IsNullOrWhiteSpace apiKey then env "OPENAI_API_KEY" else apiKey }
 
     /// Loads image bytes from a local file path or an http(s) URL.
     let loadImageBytes (image: string) (ct: CancellationToken) : Task<byte[]> = task {
@@ -114,6 +116,8 @@ module Vision =
         let payload = buildPayload config.Model prompt imageDataUrl
 
         use client = new HttpClient()
+        if not (String.IsNullOrWhiteSpace config.ApiKey) then
+            client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Bearer", config.ApiKey)
         use body = new StringContent(payload, Encoding.UTF8, "application/json")
         use! resp = client.PostAsync(url, body, ct)
         let! respText = resp.Content.ReadAsStringAsync(ct)
@@ -141,8 +145,8 @@ module Vision =
     }
 
     /// Analyzes an image and returns a detailed textual description.
-    let analyzeImage (image: string) (endpoint: string) (model: string) (ct: CancellationToken) : Task<string> = task {
-        let config = resolveConfig endpoint model
+    let analyzeImage (image: string) (endpoint: string) (model: string) (apiKey: string) (ct: CancellationToken) : Task<string> = task {
+        let config = resolveConfig endpoint model apiKey
         let! raw = loadImageBytes image ct
         let prepared = prepareImageBytes raw
         let prompt =
@@ -152,8 +156,8 @@ module Vision =
     }
 
     /// Extracts all text from an image using OCR.
-    let ocrImage (image: string) (endpoint: string) (model: string) (ct: CancellationToken) : Task<string> = task {
-        let config = resolveConfig endpoint model
+    let ocrImage (image: string) (endpoint: string) (model: string) (apiKey: string) (ct: CancellationToken) : Task<string> = task {
+        let config = resolveConfig endpoint model apiKey
         let! raw = loadImageBytes image ct
         let prepared = prepareImageBytes raw
         let prompt =
