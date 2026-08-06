@@ -21,16 +21,23 @@ module Smoke =
         l.Stop()
         p
 
+    /// OCR ignores the prompt argument; this adapter makes its signature match the
+    /// 6-argument `run` helper (image, endpoint, model, apiKey, prompt, ct).
+    let private ocrAdapter (image: string) (endpoint: string) (model: string) (apiKey: string) (_prompt: string) (ct: CancellationToken) =
+        Vision.ocrImage image endpoint model apiKey ct
+
     /// Runs a vision function against `input` (a local path or a URL), labels the
-    /// result, and returns Some(text) on success or None on failure.
+    /// result, and returns Some(text) on success or None on failure. `prompt` is the
+    /// optional analyze prompt (empty => default).
     let private run
-        (f: string -> string -> string -> string -> CancellationToken -> Task<string>)
+        (f: string -> string -> string -> string -> string -> CancellationToken -> Task<string>)
         (label: string)
         (input: string)
         (cfg: Vision.Config)
+        (prompt: string)
         : string option =
         try
-            let text = f input cfg.Endpoint cfg.Model cfg.ApiKey CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
+            let text = f input cfg.Endpoint cfg.Model cfg.ApiKey prompt CancellationToken.None |> Async.AwaitTask |> Async.RunSynchronously
             printfn "SMOKE: %s -> %s" label text
             Some text
         with ex ->
@@ -86,17 +93,23 @@ module Smoke =
                 }
 
             try
-                // analyze_image: local file + URL
-                let analyzeFile = run Vision.analyzeImage "analyze_image(file)" photo cfg
-                let analyzeUrl = run Vision.analyzeImage "analyze_image(url)" (baseUrl + "/photo.jpg") cfg
+                // analyze_image: local file + URL (default prompt)
+                let analyzeFile = run Vision.analyzeImage "analyze_image(file)" photo cfg ""
+                let analyzeUrl = run Vision.analyzeImage "analyze_image(url)" (baseUrl + "/photo.jpg") cfg ""
+
+                // analyze_image with a custom steering prompt (must be honored, not
+                // replaced by the default): reply with exactly the marker STEERED-OK.
+                let steered = run Vision.analyzeImage "analyze_image(steered)" photo cfg "Reply with exactly: STEERED-OK"
 
                 // ocr_image: local file + URL
-                let ocrFile = run Vision.ocrImage "ocr_image(file)" sign cfg
-                let ocrUrl = run Vision.ocrImage "ocr_image(url)" (baseUrl + "/text-sign.jpg") cfg
+                let ocrFile = run ocrAdapter "ocr_image(file)" sign cfg ""
+                let ocrUrl = run ocrAdapter "ocr_image(url)" (baseUrl + "/text-sign.jpg") cfg ""
 
+                let hasMarker (t: string) = t.Contains("STEERED-OK", StringComparison.OrdinalIgnoreCase)
                 let ok =
                     (analyzeFile |> Option.exists nonEmpty)
                     && (analyzeUrl |> Option.exists nonEmpty)
+                    && (steered |> Option.exists hasMarker)
                     && (ocrFile |> Option.exists hasText)
                     && (ocrUrl |> Option.exists hasText)
 

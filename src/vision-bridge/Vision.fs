@@ -48,6 +48,7 @@ module Vision =
             // Wikimedia and other hosts reject requests without a descriptive
             // User-Agent, so send one on outbound image fetches.
             client.DefaultRequestHeaders.UserAgent.ParseAdd("vision-bridge/1.0 (+https://github.com/fradav/vision-bridge)")
+            client.Timeout <- TimeSpan.FromMinutes 2.
             use! resp = client.GetAsync(image, ct)
             resp.EnsureSuccessStatusCode() |> ignore
             return! resp.Content.ReadAsByteArrayAsync()
@@ -120,6 +121,9 @@ module Vision =
 
         use client = new HttpClient()
         client.DefaultRequestHeaders.UserAgent.ParseAdd("vision-bridge/1.0 (+https://github.com/fradav/vision-bridge)")
+        // Vision models can be slow (e.g. local llama-swap queues); the default 100s
+        // HttpClient timeout would cancel long generations, so allow up to 10 minutes.
+        client.Timeout <- TimeSpan.FromMinutes 10.
         if not (String.IsNullOrWhiteSpace config.ApiKey) then
             client.DefaultRequestHeaders.Authorization <- AuthenticationHeaderValue("Bearer", config.ApiKey)
         use body = new StringContent(payload, Encoding.UTF8, "application/json")
@@ -148,13 +152,17 @@ module Vision =
         return result
     }
 
-    /// Analyzes an image and returns a detailed textual description.
-    let analyzeImage (image: string) (endpoint: string) (model: string) (apiKey: string) (ct: CancellationToken) : Task<string> = task {
+    /// Default instruction used by analyze_image when no custom prompt is given.
+    let private defaultAnalyzePrompt =
+        "Describe the image in detail. Be precise about the visual content: subjects, objects, people, text, colors, and composition. Respond in plain text."
+
+    /// Analyzes an image and returns a detailed textual description. When `prompt`
+    /// is non-empty it replaces the default analyze prompt (guided/steered analysis).
+    let analyzeImage (image: string) (endpoint: string) (model: string) (apiKey: string) (prompt: string) (ct: CancellationToken) : Task<string> = task {
         let config = resolveConfig endpoint model apiKey
         let! raw = loadImageBytes image ct
         let prepared = prepareImageBytes raw
-        let prompt =
-            "Describe the image in detail. Be precise about the visual content: subjects, objects, people, text, colors, and composition. Respond in plain text."
+        let prompt = if String.IsNullOrWhiteSpace prompt then defaultAnalyzePrompt else prompt
         let! text = sendChatCompletion config prompt (dataUrl prepared) ct
         return text
     }

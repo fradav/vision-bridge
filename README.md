@@ -11,6 +11,11 @@ It exposes two tools over the Model Context Protocol (C# SDK 2.0):
 The server talks to any OpenAI-compatible chat/completions endpoint that accepts
 `image_url` content parts (vision models).
 
+`analyze_image` also accepts an optional **`prompt`** argument that replaces the default
+analysis instruction — use it to steer/guide the analysis (e.g. *"Count the objects in
+this image"*, *"Describe the colors only"*). If omitted or empty, the default detailed
+description prompt is used. `ocr_image` does not take a prompt.
+
 ## Configuration
 
 The server needs an OpenAI-compatible endpoint and a vision model. Set them as

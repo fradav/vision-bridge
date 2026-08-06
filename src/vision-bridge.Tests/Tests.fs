@@ -106,14 +106,21 @@ let integrationTests =
                 }
 
             try
-                // Local file -> analyze_image
+                // Local file -> analyze_image (default prompt)
                 let tmp = Path.Combine(Path.GetTempPath(), "vb-test.png")
                 File.WriteAllBytes(tmp, imageBytes)
                 let r1 =
-                    Vision.analyzeImage tmp baseUrl "mock-model" "" CancellationToken.None
+                    Vision.analyzeImage tmp baseUrl "mock-model" "" "" CancellationToken.None
                     |> Async.AwaitTask
                     |> Async.RunSynchronously
                 Expect.equal r1 "MOCK-OK" "analyze_image on a local file"
+
+                // Local file -> analyze_image with a custom steering prompt
+                let r1b =
+                    Vision.analyzeImage tmp baseUrl "mock-model" "" "Reply with exactly: STEERED-OK" CancellationToken.None
+                    |> Async.AwaitTask
+                    |> Async.RunSynchronously
+                Expect.equal r1b "MOCK-OK" "analyze_image with a custom prompt"
 
                 // URL -> ocr_image
                 let r2 =
