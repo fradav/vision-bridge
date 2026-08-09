@@ -25,5 +25,5 @@
     <Compile Include="Smoke.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
-  <Import Project="..\..\.paket\Paket.Restore.targets" />
+  <Import Project="..\..\.paket\Paket.Restore.targets" Condition="'$(IsPacking)' != 'true'" />
 </Project>
