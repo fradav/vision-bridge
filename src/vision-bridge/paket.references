@@ -1,4 +1,5 @@
 group Main
+  nuget FsMcp.Server
   nuget ModelContextProtocol
   nuget Microsoft.Extensions.Hosting
   nuget SixLabors.ImageSharp

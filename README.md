@@ -1,12 +1,13 @@
 # vision-bridge
 
 An F# MCP stdio server that adds vision capabilities to a pure text-to-text LLM.
-It exposes two tools over the Model Context Protocol (C# SDK 2.0):
+It exposes two tools over the Model Context Protocol, built with the **FsMcp** F#
+library (which wraps the official C# MCP SDK):
 
-- **`analyze_image`** — takes an image (local file path or http(s) URL) and returns a
-  detailed textual description of its visual content.
-- **`ocr_image`** — takes an image (local file path or http(s) URL) and returns the text
-  extracted from it (OCR).
+- **`analyze_image`** — takes one or more images (local file paths, http(s) URLs, or
+  data URLs) and returns a detailed textual description of their visual content.
+- **`ocr_image`** — takes one or more images (local file paths, http(s) URLs, or data
+  URLs) and returns the text extracted from them (OCR).
 
 The server talks to any OpenAI-compatible chat/completions endpoint that accepts
 `image_url` content parts (vision models).
@@ -27,7 +28,23 @@ environment variables, or pass them per-call as tool arguments:
 | Model (e.g. `qwen3.6-moe:instruct`) | `OPENAI_MODEL` | `model` |
 | API key (optional, e.g. `sk-...`) | `OPENAI_API_KEY` | `api_key` |
 
-In the MCP tool schema only `image` is required — `endpoint`, `model` and `api_key` are optional and fall back to their `OPENAI_*` environment variables when omitted. Tool arguments take priority; the environment variables are the fallback.
+In the MCP tool schema only `images` is required — an **array** of images (local file paths, http(s) URLs, or data URLs). `endpoint`, `model`, `api_key` and (for `analyze_image`) `prompt` are optional and fall back to their `OPENAI_*` environment variables when omitted. Tool arguments take priority; the environment variables are the fallback.
+
+Both tools accept an **arbitrary number of images** — use it for comparisons, scanning
+several pages, checking multiple screenshots, and so on. `analyze_image` describes each
+image in order and labels them `Image 1:`, `Image 2:`, ... so the model can compare them;
+`ocr_image` extracts the text of each image and labels the extracted text the same way.
+
+```json
+{
+  "images": [
+    "/tmp/page1.png",
+    "https://example.com/page2.jpg",
+    "data:image/jpeg;base64,..."
+  ],
+  "prompt": "Compare the two pages and list the differences"
+}
+```
 
 You can also configure the server itself at startup, via CLI flags or environment
 variables:
@@ -245,7 +262,8 @@ dotnet run --project Build.fsproj -- -t Test   # clean + run the Expecto suite
 ```
 
 The test suite includes unit tests for image loading/validation/downscaling and an
-offline end-to-end test that runs both tools against a local mock OpenAI endpoint.
+offline end-to-end test that runs both tools against a local mock OpenAI endpoint,
+including multi-image payloads (one `image_url` part per image).
 
 ## Real-endpoint smoke test (FAKE task)
 
@@ -266,7 +284,10 @@ OPENAI_BASE_URL=http://localhost:8080/v1 OPENAI_MODEL=qwen3.6-moe:instruct \
 
 The task builds the app, then runs `vision-bridge --smoke`. For each tool it
 exercises **both** input modes against real images: a local file path and an
-http(s) URL (the samples are served by a short-lived local HTTP server). It
-asserts that `analyze_image` returns a non-empty description of the photo and
-that `ocr_image` extracts the sign's text (it checks for the known `TOURVILLE`
-substring). It exits non-zero on any failure.
+http(s) URL (the samples are served by a short-lived local HTTP server). It also
+exercises **multi-image** calls: `analyze_image` with photo + street sign (the
+answer must mention the sign's `TOURVILLE` text) and `ocr_image` with sign + photo
+(the extracted text must still contain `TOURVILLE`). It asserts that
+`analyze_image` returns a non-empty description of the photo, that a custom
+steering prompt is honored, and that `ocr_image` extracts the sign's text. It
+exits non-zero on any failure.

@@ -104,6 +104,7 @@ let integrationTests =
 
             let imageBytes = makePng 64 64
             let baseUrl = sprintf "http://127.0.0.1:%d" port
+            let mutable lastBody = ""
 
             let serveTask =
                 task {
@@ -117,6 +118,8 @@ let integrationTests =
                                 ctx.Response.OutputStream.Write(imageBytes, 0, imageBytes.Length)
                                 ctx.Response.Close()
                             elif path = "/chat/completions" then
+                                use sr = new StreamReader(ctx.Request.InputStream, Encoding.UTF8)
+                                lastBody <- sr.ReadToEnd()
                                 let body = """{"choices":[{"message":{"content":"MOCK-OK"}}]}"""
                                 let bytes = Encoding.UTF8.GetBytes body
                                 ctx.Response.ContentType <- "application/json"
@@ -129,29 +132,57 @@ let integrationTests =
                         with _ -> ()
                 }
 
+            // Counts image_url content parts in the captured chat payload.
+            let imagePartCount () =
+                let root = JsonNode.Parse lastBody :?> JsonObject
+                let messages = root["messages"] :?> JsonArray
+                let content = (messages[0] :?> JsonObject)["content"] :?> JsonArray
+                content
+                |> Seq.filter (fun p ->
+                    let o = p :?> JsonObject
+                    o["type"] <> null && o["type"].GetValue<string>() = "image_url")
+                |> Seq.length
+
             try
                 // Local file -> analyze_image (default prompt)
                 let tmp = Path.Combine(Path.GetTempPath(), "vb-test.png")
                 File.WriteAllBytes(tmp, imageBytes)
                 let r1 =
-                    Vision.analyzeImage tmp baseUrl "mock-model" "" "" CancellationToken.None
+                    Vision.analyzeImage [| tmp |] baseUrl "mock-model" "" "" CancellationToken.None
                     |> Async.AwaitTask
                     |> Async.RunSynchronously
                 Expect.equal r1 "MOCK-OK" "analyze_image on a local file"
+                Expect.equal (imagePartCount ()) 1 "single-image payload carries one image part"
 
                 // Local file -> analyze_image with a custom steering prompt
                 let r1b =
-                    Vision.analyzeImage tmp baseUrl "mock-model" "" "Reply with exactly: STEERED-OK" CancellationToken.None
+                    Vision.analyzeImage [| tmp |] baseUrl "mock-model" "" "Reply with exactly: STEERED-OK" CancellationToken.None
                     |> Async.AwaitTask
                     |> Async.RunSynchronously
                 Expect.equal r1b "MOCK-OK" "analyze_image with a custom prompt"
 
                 // URL -> ocr_image
                 let r2 =
-                    Vision.ocrImage (baseUrl + "/image.png") baseUrl "mock-model" "" CancellationToken.None
+                    Vision.ocrImage [| baseUrl + "/image.png" |] baseUrl "mock-model" "" CancellationToken.None
                     |> Async.AwaitTask
                     |> Async.RunSynchronously
                 Expect.equal r2 "MOCK-OK" "ocr_image from a URL"
+
+                // MULTI-IMAGE -> analyze_image with two images (comparison/scanning)
+                let r3 =
+                    Vision.analyzeImage [| tmp; baseUrl + "/image.png" |] baseUrl "mock-model" "" "" CancellationToken.None
+                    |> Async.AwaitTask
+                    |> Async.RunSynchronously
+                Expect.equal r3 "MOCK-OK" "analyze_image with multiple images"
+                Expect.equal (imagePartCount ()) 2 "multi-image payload carries one image part per image"
+
+                // MULTI-IMAGE -> ocr_image with two images
+                let r4 =
+                    Vision.ocrImage [| tmp; baseUrl + "/image.png" |] baseUrl "mock-model" "" CancellationToken.None
+                    |> Async.AwaitTask
+                    |> Async.RunSynchronously
+                Expect.equal r4 "MOCK-OK" "ocr_image with multiple images"
+                Expect.equal (imagePartCount ()) 2 "multi-image OCR payload carries one image part per image"
             finally
                 cts.Cancel()
                 listener.Stop()

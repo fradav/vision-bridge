@@ -4,15 +4,13 @@
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <NoWarn>$(NoWarn);NU1510</NoWarn>
-
     <!-- GitHub Packages / dotnet tool packaging -->
     <PackageId>vision-bridge</PackageId>
-    <Description>An F# vision bridge: an MCP stdio server (analyze_image / ocr_image tools) and an OpenAI-compatible proxy that rewrites images into guided VLM descriptions for a text-only LLM.</Description>
+    <Description>An F# vision bridge (FsMcp): an MCP stdio server with multi-image analyze_image / ocr_image tools and an OpenAI-compatible proxy that rewrites images into guided VLM descriptions for a text-only LLM.</Description>
     <Authors>fradav</Authors>
-    <PackageTags>mcp;vision;stdio;fsharp;ocr;proxy;openai</PackageTags>
+    <PackageTags>mcp;vision;stdio;fsharp;ocr;proxy;openai;fsmcp;multi-image</PackageTags>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/fradav/vision-bridge</RepositoryUrl>
-
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>vision-bridge</ToolCommandName>
     <IncludeReadme>true</IncludeReadme>
@@ -27,5 +25,5 @@
     <Compile Include="Smoke.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
-  <Import Project="..\..\.paket\Paket.Restore.targets" Condition="'$(IsPacking)' != 'true'" />
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

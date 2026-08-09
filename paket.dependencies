@@ -13,9 +13,15 @@ group Build
 
 group Main
   source https://api.nuget.org/v3/index.json
-  # MCP SDK 2.0 for the stdio vision server
-  nuget ModelContextProtocol ~> 2.0
-  # Generic host used to build the stdio server
+  # FsMcp: idiomatic F# MCP server toolkit (wraps the official C# MCP SDK)
+  nuget FsMcp.Server ~> 1.2
+  # FsMcp 1.2.2 is built/tested against the official MCP C# SDK 1.2.0; pin the
+  # exact versions so a different SDK major/minor can't break FsMcp at runtime.
+  # The metapackage and the Core assembly must agree (Core resolved to 2.0.0
+  # otherwise, which lacks types FsMcp 1.2.2 references).
+  nuget ModelContextProtocol 1.2.0
+  nuget ModelContextProtocol.Core 1.2.0
+  # Generic host used by FsMcp to build the stdio server
   nuget Microsoft.Extensions.Hosting
   # Cross-platform image decoding / validation / resizing
   nuget SixLabors.ImageSharp ~> 3.1

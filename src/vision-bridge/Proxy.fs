@@ -129,7 +129,7 @@ module Proxy =
             let! _ = sem.WaitAsync(ct)
             try
                 try
-                    let! t = Vision.analyzeImage url cfg.VlmEndpoint cfg.VlmModel cfg.VlmApiKey vlmPrompt ct
+                    let! t = Vision.analyzeImage [| url |] cfg.VlmEndpoint cfg.VlmModel cfg.VlmApiKey vlmPrompt ct
                     return t
                 with ex ->
                     return sprintf "[unavailable: %s]" ex.Message

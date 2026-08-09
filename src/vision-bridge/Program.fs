@@ -1,44 +1,35 @@
 namespace VisionBridge
 
 open System
-open System.ComponentModel
 open System.Threading
 open System.Threading.Tasks
-open Microsoft.Extensions.DependencyInjection
-open Microsoft.Extensions.Hosting
-open Microsoft.Extensions.Logging
-open ModelContextProtocol.Server
+open FsMcp.Core
+open FsMcp.Core.Validation
+open FsMcp.Server
 
-/// MCP tools exposed by the vision-bridge stdio server.
-[<McpServerToolType>]
-type VisionTools() =
+/// Tool arguments for analyze_image: an arbitrary number of images (local file
+/// paths, http(s) URLs, or data URLs). endpoint/model/api_key/prompt are optional
+/// and fall back to their OPENAI_* environment variables / default prompts.
+type AnalyzeArgs =
+    { images: string[]
+      endpoint: string option
+      model: string option
+      api_key: string option
+      prompt: string option }
 
-    [<McpServerTool; Description("Analyzes an image or image URL and returns a detailed textual description of its visual content.")>]
-    static member AnalyzeImage
-        (
-            [<Description("Path to a local image file, or an http(s) URL of an image.")>] image: string,
-            [<Description("OpenAI-compatible endpoint, e.g. https://api.openai.com/v1. If empty, uses OPENAI_BASE_URL.")>] ?endpoint: string,
-            [<Description("Vision model name, e.g. gpt-4o-mini. If empty, uses OPENAI_MODEL.")>] ?model: string,
-            [<Description("API key for the endpoint. If empty, uses OPENAI_API_KEY.")>] ?api_key: string,
-            [<Description("Custom analysis instructions. If empty, uses the default analyze prompt.")>] ?prompt: string
-        ) : Task<string> =
-        Vision.analyzeImage image (defaultArg endpoint "") (defaultArg model "") (defaultArg api_key "") (defaultArg prompt "") CancellationToken.None
-
-    [<McpServerTool; Description("Extracts all text from an image or image URL using Optical Character Recognition (OCR).")>]
-    static member OcrImage
-        (
-            [<Description("Path to a local image file, or an http(s) URL of an image.")>] image: string,
-            [<Description("OpenAI-compatible endpoint, e.g. https://api.openai.com/v1. If empty, uses OPENAI_BASE_URL.")>] ?endpoint: string,
-            [<Description("Vision model name, e.g. gpt-4o-mini. If empty, uses OPENAI_MODEL.")>] ?model: string,
-            [<Description("API key for the endpoint. If empty, uses OPENAI_API_KEY.")>] ?api_key: string
-        ) : Task<string> =
-        Vision.ocrImage image (defaultArg endpoint "") (defaultArg model "") (defaultArg api_key "") CancellationToken.None
+/// Tool arguments for ocr_image: an arbitrary number of images.
+/// endpoint/model/api_key are optional and fall back to their OPENAI_* environment variables.
+type OcrArgs =
+    { images: string[]
+      endpoint: string option
+      model: string option
+      api_key: string option }
 
 module Program =
 
-    /// Sets the OPENAI_* env vars from CLI flags. CLI values take priority over any
-    /// pre-existing environment variables. Returns the argv with our flags stripped so
-    /// the host builder never sees them.
+    /// Sets the OPENAI_* / VLM_* / PROXY_PORT env vars from CLI flags. CLI values
+    /// take priority over any pre-existing environment variables. Returns the argv
+    /// with our flags stripped (the FsMcp server reads no host builder args).
     let private applyCliConfig (argv: string[]) : string[] =
         let kept = ResizeArray<string>()
         let rec go i =
@@ -75,10 +66,42 @@ module Program =
         go 0
         kept.ToArray()
 
+    /// Handles analyze_image: describes every image (comparison, scanning several
+    /// pages, ...) with the vision model and returns the text reply.
+    let private analyzeHandler (args: AnalyzeArgs) : Task<Result<Content list, McpError>> = task {
+        try
+            let! text =
+                Vision.analyzeImage
+                    args.images
+                    (defaultArg args.endpoint "")
+                    (defaultArg args.model "")
+                    (defaultArg args.api_key "")
+                    (defaultArg args.prompt "")
+                    CancellationToken.None
+            return Ok [ Content.text text ]
+        with ex ->
+            return Error (TransportError ex.Message)
+    }
+
+    /// Handles ocr_image: extracts all text from every image and returns it.
+    let private ocrHandler (args: OcrArgs) : Task<Result<Content list, McpError>> = task {
+        try
+            let! text =
+                Vision.ocrImage
+                    args.images
+                    (defaultArg args.endpoint "")
+                    (defaultArg args.model "")
+                    (defaultArg args.api_key "")
+                    CancellationToken.None
+            return Ok [ Content.text text ]
+        with ex ->
+            return Error (TransportError ex.Message)
+    }
+
     [<EntryPoint>]
     let main argv =
         // CLI config flags (--endpoint/--model/--api-key/--vlm-*/--port) override the env vars.
-        let rest = applyCliConfig argv
+        applyCliConfig argv |> ignore
 
         if argv |> Array.exists (fun a -> a = "--proxy") then
             // OpenAI-compatible proxy: rewrites images into guided VLM descriptions
@@ -88,16 +111,26 @@ module Program =
             // Functional smoke test against a live endpoint (FAKE SmokeTest target).
             Smoke.runSmoke ()
         else
-            let builder = Host.CreateApplicationBuilder rest
-
-            // All logs must go to stderr — stdout is reserved for the MCP stdio protocol.
-            builder.Logging.AddConsole(fun o -> o.LogToStandardErrorThreshold <- LogLevel.Trace) |> ignore
-
-            builder.Services
-                .AddMcpServer()
-                .WithStdioServerTransport()
-                .WithTools<VisionTools>()
-                |> ignore
-
-            builder.Build().RunAsync().GetAwaiter().GetResult()
+            // FsMcp stdio server: stdout is reserved for the MCP protocol, logs go to stderr.
+            let server =
+                mcpServer {
+                    name "vision-bridge"
+                    version "1.0.0"
+                    tool (
+                        TypedTool.define<AnalyzeArgs>
+                            "analyze_image"
+                            "Analyzes one or more images (local file paths, http(s) URLs, or data URLs) and returns a detailed textual description of their visual content."
+                            analyzeHandler
+                        |> unwrapResult
+                    )
+                    tool (
+                        TypedTool.define<OcrArgs>
+                            "ocr_image"
+                            "Extracts all text from one or more images (local file paths, http(s) URLs, or data URLs) using optical character recognition (OCR)."
+                            ocrHandler
+                        |> unwrapResult
+                    )
+                    useStdio
+                }
+            Server.run server |> fun t -> t.GetAwaiter().GetResult()
             0
