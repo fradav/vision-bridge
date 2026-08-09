@@ -7,9 +7,9 @@
 
     <!-- GitHub Packages / dotnet tool packaging -->
     <PackageId>vision-bridge</PackageId>
-    <Description>An F# MCP stdio server that adds vision capabilities to a text-to-text LLM. Exposes analyze_image and ocr_image tools over stdio.</Description>
+    <Description>An F# vision bridge: an MCP stdio server (analyze_image / ocr_image tools) and an OpenAI-compatible proxy that rewrites images into guided VLM descriptions for a text-only LLM.</Description>
     <Authors>fradav</Authors>
-    <PackageTags>mcp;vision;stdio;fsharp;ocr</PackageTags>
+    <PackageTags>mcp;vision;stdio;fsharp;ocr;proxy;openai</PackageTags>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/fradav/vision-bridge</RepositoryUrl>
 
@@ -23,6 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Vision.fs" />
+    <Compile Include="Proxy.fs" />
     <Compile Include="Smoke.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

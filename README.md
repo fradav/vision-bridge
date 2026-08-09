@@ -50,6 +50,55 @@ dotnet run --project src/vision-bridge/vision-bridge.fsproj
 The server speaks MCP over stdio (newline-delimited JSON-RPC). Logs go to stderr;
 stdout is reserved for the protocol.
 
+## Proxy mode (OpenAI-compatible wrapper)
+
+`vision-bridge --proxy` runs an OpenAI-compatible **server wrapper** that makes a
+text-only LLM "vision-aware". It takes two OpenAI-compatible upstreams — an LLM
+and a VLM — and rewrites every `image_url` content part of a chat request into a
+guided VLM description before forwarding it to the LLM, so the LLM only ever sees
+text. An **arbitrary number of images** per request is supported (comparison,
+scanning several pages, ...); images are described by the VLM in parallel and each
+keeps its reading-order index `[Image N: ...]` across the whole request so the LLM
+can reference and compare them.
+
+### Proxy configuration
+
+| Setting | Env var | CLI flag |
+|---|---|---|
+| LLM upstream endpoint | `OPENAI_BASE_URL` | `--endpoint` / `-e` |
+| LLM model | `OPENAI_MODEL` | `--model` / `-m` |
+| LLM API key (optional) | `OPENAI_API_KEY` | `--api-key` / `-k` |
+| VLM upstream endpoint | `VLM_BASE_URL` | `--vlm-endpoint` / `-ve` |
+| VLM model | `VLM_MODEL` | `--vlm-model` / `-vm` |
+| VLM API key (optional) | `VLM_API_KEY` | `--vlm-api-key` / `-vk` |
+| Listen port (default 8787) | `PROXY_PORT` | `--port` / `-p` |
+
+```sh
+vision-bridge --proxy --port 8787 \
+  --endpoint http://localhost:1234/v1 --model my-text-llm \
+  --vlm-endpoint http://localhost:11434/v1 --vlm-model llava:13b
+```
+
+### API surface
+
+- `POST /v1/chat/completions` (and `/chat/completions`) — the rewritten request is
+  forwarded to the LLM upstream; responses are relayed back (SSE streaming is
+  passed through when `stream: true`).
+- `GET /v1/models` — advertises the configured LLM model.
+- `GET /health` — liveness check.
+
+The proxy binds `127.0.0.1` only. Point any OpenAI-compatible client at
+`http://127.0.0.1:<port>/v1`.
+
+```sh
+curl -s http://127.0.0.1:8787/v1/chat/completions -H 'content-type: application/json' \
+  -d '{"model":"visionbridge","messages":[{"role":"user","content":[
+    {"type":"text","text":"Compare the two images."},
+    {"type":"image_url","image_url":{"url":"data:image/jpeg;base64,..."}},
+    {"type":"image_url","image_url":{"url":"data:image/jpeg;base64,..."}}
+  ]}]}'
+```
+
 ## GitHub Package (dotnet tool)
 
 `vision-bridge` is packaged as a .NET **global tool** and published to GitHub Packages

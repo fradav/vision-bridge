@@ -4,11 +4,13 @@ open System
 open System.IO
 open System.Net
 open System.Text
+open System.Text.Json.Nodes
 open System.Threading
 open Expecto
 open SixLabors.ImageSharp
 open SixLabors.ImageSharp.PixelFormats
 open VisionBridge
+open VisionBridge.Proxy
 
 /// Generates a PNG of the given dimensions.
 let makePng (w: int) (h: int) : byte[] =
@@ -45,6 +47,28 @@ let imageTests =
                     false
                 with _ -> true
             Expect.isTrue ran "missing file should raise"
+        }
+
+        test "loadImageBytes decodes a data URL" {
+            let png = makePng 32 32
+            let dataUrl = "data:image/png;base64," + Convert.ToBase64String png
+            let bytes =
+                Vision.loadImageBytes dataUrl CancellationToken.None
+                |> Async.AwaitTask
+                |> Async.RunSynchronously
+            Expect.equal bytes png "decoded bytes match the original PNG"
+        }
+
+        test "loadImageBytes rejects a malformed data URL" {
+            let ran =
+                try
+                    Vision.loadImageBytes "data:image/png;base64" CancellationToken.None
+                    |> Async.AwaitTask
+                    |> Async.RunSynchronously
+                    |> ignore
+                    false
+                with _ -> true
+            Expect.isTrue ran "malformed data URL should raise"
         }
 
         test "resolveConfig falls back to environment variables" {
@@ -132,4 +156,78 @@ let integrationTests =
                 cts.Cancel()
                 listener.Stop()
         )
+    ]
+
+[<Tests>]
+let proxyTests =
+    let requestJson =
+        """{
+          "model": "m",
+          "messages": [
+            {"role": "user", "content": "hello"},
+            {"role": "user", "content": [
+              {"type": "text", "text": "t"},
+              {"type": "image_url", "image_url": {"url": "http://a/1.png"}},
+              {"type": "image_url", "image_url": "data:image/png;base64,AAAA"}
+            ]},
+            {"role": "assistant", "content": [
+              {"type": "image_url", "image_url": {"url": "http://b/2.png"}}
+            ]}
+          ]
+        }"""
+
+    let parse (s: string) = JsonNode.Parse(s) :?> JsonObject
+
+    testList "Proxy" [
+        test "collectImageUrls finds every image part in reading order" {
+            let urls = Proxy.collectImageUrls (parse requestJson)
+            Expect.equal urls [ "http://a/1.png"; "data:image/png;base64,AAAA"; "http://b/2.png" ] "urls across messages"
+        }
+
+        test "rewriteWithImages replaces every image part with an indexed text part" {
+            let rewritten = Proxy.rewriteWithImages (parse requestJson) [ "d1"; "d2"; "d3" ]
+            Expect.equal (rewritten["model"].GetValue<string>()) "m" "model untouched"
+            Expect.equal (Proxy.collectImageUrls rewritten) [] "no image parts remain"
+
+            let msgs = rewritten["messages"] :?> JsonArray
+            // plain-string message untouched
+            let content0 = (msgs[0] :?> JsonObject)["content"] :?> JsonValue
+            Expect.equal (content0.GetValue<string>()) "hello" "plain-text message untouched"
+
+            // message with text + 2 images: parts become [text, [Image 1], [Image 2]]
+            let content1 = (msgs[1] :?> JsonObject)["content"] :?> JsonArray
+            Expect.equal content1.Count 3 "2 image parts replaced in place"
+            let p0 = content1[0] :?> JsonObject
+            Expect.equal (p0["type"].GetValue<string>()) "text" "first part stays text"
+            Expect.equal (p0["text"].GetValue<string>()) "t" "first part text kept"
+            let p1 = content1[1] :?> JsonObject
+            Expect.equal (p1["type"].GetValue<string>()) "text" "image 1 became text"
+            Expect.equal (p1["text"].GetValue<string>()) "[Image 1: d1]" "image 1 marker"
+            let p2 = content1[2] :?> JsonObject
+            Expect.equal (p2["text"].GetValue<string>()) "[Image 2: d2]" "image 2 marker"
+
+            // assistant message with 1 image
+            let content2 = (msgs[2] :?> JsonObject)["content"] :?> JsonArray
+            Expect.equal content2.Count 1 "1 image part replaced"
+            let p3 = content2[0] :?> JsonObject
+            Expect.equal (p3["text"].GetValue<string>()) "[Image 3: d3]" "image 3 marker"
+        }
+
+        test "rewriteWithImages marks missing descriptions unavailable" {
+            let rewritten = Proxy.rewriteWithImages (parse requestJson) [ "d1" ]
+            let msgs = rewritten["messages"] :?> JsonArray
+            let content1 = (msgs[1] :?> JsonObject)["content"] :?> JsonArray
+            let p2 = content1[2] :?> JsonObject
+            Expect.equal (p2["text"].GetValue<string>()) "[Image 2: [unavailable]]" "missing description noted"
+        }
+
+        test "prepareForward pins the LLM model and stream flag" {
+            let cfg =
+                { LlmEndpoint = "http://llm/v1"; LlmModel = "llm-model"; LlmApiKey = ""
+                  VlmEndpoint = "http://vlm/v1"; VlmModel = "vlm-model"; VlmApiKey = ""
+                  Port = 1 }
+            let fwd = Proxy.prepareForward (parse """{"model":"client-model","stream":true}""") cfg true
+            Expect.equal (fwd["model"].GetValue<string>()) "llm-model" "model pinned to LLM"
+            Expect.equal (fwd["stream"].GetValue<bool>()) true "stream pinned"
+        }
     ]

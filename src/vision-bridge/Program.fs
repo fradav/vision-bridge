@@ -57,6 +57,18 @@ module Program =
                 | "--api-key" | "-k" ->
                     Environment.SetEnvironmentVariable("OPENAI_API_KEY", valueOf ())
                     go (i + 2)
+                | "--vlm-endpoint" | "-ve" ->
+                    Environment.SetEnvironmentVariable("VLM_BASE_URL", valueOf ())
+                    go (i + 2)
+                | "--vlm-model" | "-vm" ->
+                    Environment.SetEnvironmentVariable("VLM_MODEL", valueOf ())
+                    go (i + 2)
+                | "--vlm-api-key" | "-vk" ->
+                    Environment.SetEnvironmentVariable("VLM_API_KEY", valueOf ())
+                    go (i + 2)
+                | "--port" | "-p" ->
+                    Environment.SetEnvironmentVariable("PROXY_PORT", valueOf ())
+                    go (i + 2)
                 | other ->
                     kept.Add other
                     go (i + 1)
@@ -65,10 +77,14 @@ module Program =
 
     [<EntryPoint>]
     let main argv =
-        // CLI config flags (--endpoint/--model/--api-key) override the OPENAI_* env vars.
+        // CLI config flags (--endpoint/--model/--api-key/--vlm-*/--port) override the env vars.
         let rest = applyCliConfig argv
 
-        if argv |> Array.exists (fun a -> a = "--smoke") then
+        if argv |> Array.exists (fun a -> a = "--proxy") then
+            // OpenAI-compatible proxy: rewrites images into guided VLM descriptions
+            // for a text-only LLM upstream (FAKE ProxyTest target).
+            Proxy.runProxy ()
+        elif argv |> Array.exists (fun a -> a = "--smoke") then
             // Functional smoke test against a live endpoint (FAKE SmokeTest target).
             Smoke.runSmoke ()
         else

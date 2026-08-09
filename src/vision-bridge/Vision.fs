@@ -39,11 +39,18 @@ module Vision =
         if String.IsNullOrWhiteSpace image then
             failwith "image input is empty"
 
+        let isDataUrl = image.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
         let isUrl =
             image.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             || image.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
 
-        if isUrl then
+        if isDataUrl then
+            // data:<mime>;base64,<payload> — used by chat clients sending inline images.
+            let comma = image.IndexOf(',')
+            if comma < 0 then
+                failwith "invalid data URL (missing ',' separator)"
+            return Convert.FromBase64String(image.Substring(comma + 1))
+        elif isUrl then
             use client = new HttpClient()
             // Wikimedia and other hosts reject requests without a descriptive
             // User-Agent, so send one on outbound image fetches.
