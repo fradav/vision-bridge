@@ -196,12 +196,18 @@ let integrationTests =
                 listener.Stop()
         )
 
-        testCase "batches more than maxImagesPerRequest images across separate chat requests" (fun () ->
-            // Regression test for the flaky multi-image bug: some vision backends
-            // cap images-per-message or truncate large payloads, so a call with more
-            // images than maxImagesPerRequest must be split into several smaller chat
-            // requests (each <= maxImagesPerRequest image parts) and the labeled
-            // replies concatenated. Every image must still be sent exactly once.
+        testCase "batches > threshold images, but one tool call = one request by default" (fun () ->
+            // Phase 1 — split safety valve: when the threshold is forced low
+            // (VISION_MAX_IMAGES_PER_REQUEST=4), a call with more images than the
+            // threshold must split into several smaller chat requests (each <= threshold
+            // image parts) and the labeled replies concatenated; every image is sent
+            // exactly once and no two image_url parts are adjacent (frame-merge fix).
+            // Phase 2 — default: with the high default threshold, a 6-image call is a
+            // SINGLE chat request carrying every image (the fix for the "double request
+            // for one mcp tool" the user observed). Both phases run in one testCase so
+            // the env change can't race with other tests (Expecto runs testCases in
+            // parallel); no other test uses >4 images, so the env is safe either way.
+            Environment.SetEnvironmentVariable("VISION_MAX_IMAGES_PER_REQUEST", "4")
             use cts = new CancellationTokenSource()
             use listener = new HttpListener()
             let port = 8124
@@ -269,18 +275,35 @@ let integrationTests =
 
             try
                 let urls = [| for _ in 1 .. 6 -> baseUrl + "/image.png" |]
-                let r =
+                // Phase 1: threshold 4 -> 2 requests, every image sent once, no adjacent images.
+                let r1 =
                     Vision.analyzeImage urls baseUrl "mock-model" "" "" CancellationToken.None
                     |> Async.AwaitTask
                     |> Async.RunSynchronously
-                Expect.equal chatCount.Value 2 "6 images -> 2 chat requests"
+                Expect.equal chatCount.Value 2 "6 images -> 2 chat requests (threshold 4)"
                 Expect.isTrue (maxParts.Value <= 4) "each request carries at most 4 image parts"
                 Expect.equal totalParts.Value 6 "every image sent exactly once across requests"
                 Expect.equal maxConsec.Value 1 "text separator between images (llama.cpp frame-merge fix)"
-                Expect.isTrue (r.Contains("MOCK-OK")) "concatenated reply contains the mock answer"
+                Expect.isTrue (r1.Contains("MOCK-OK")) "concatenated reply contains the mock answer"
+
+                // Phase 2: default threshold -> a single request carrying all 6 images.
+                chatCount.Value <- 0
+                maxParts.Value <- 0
+                totalParts.Value <- 0
+                maxConsec.Value <- 0
+                Environment.SetEnvironmentVariable("VISION_MAX_IMAGES_PER_REQUEST", null)
+                let r2 =
+                    Vision.analyzeImage urls baseUrl "mock-model" "" "" CancellationToken.None
+                    |> Async.AwaitTask
+                    |> Async.RunSynchronously
+                Expect.equal chatCount.Value 1 "6 images -> exactly 1 chat request by default"
+                Expect.equal maxParts.Value 6 "single request carries all 6 image parts"
+                Expect.equal totalParts.Value 6 "every image sent exactly once"
+                Expect.isTrue (r2.Contains("MOCK-OK")) "reply contains the mock answer"
             finally
                 cts.Cancel()
                 listener.Stop()
+                Environment.SetEnvironmentVariable("VISION_MAX_IMAGES_PER_REQUEST", null)
         )
     ]
 

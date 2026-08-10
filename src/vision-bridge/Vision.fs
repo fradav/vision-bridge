@@ -19,15 +19,21 @@ module Vision =
     /// Maximum image dimension sent to the vision endpoint (OpenAI guidance).
     let private maxDimension = 1568
 
-    /// Maximum number of image_url parts sent in a single chat request. Some
-    /// vision backends cap images-per-message or truncate large payloads, which
-    /// made multi-image calls flaky (the VLM saw only a subset of the images).
-    /// Larger sets are split into at most this many per request, and each image is
-    /// preceded by a text marker so llama.cpp does not frame-merge consecutive
-    /// images (ggml-org/llama.cpp#24303). The labeled replies are then
-    /// concatenated, so every request stays small enough that all of its images
-    /// are processed.
-    let private maxImagesPerRequest = 4
+    /// Maximum number of image_url parts sent in a single chat request. Defaults
+    /// to a high value (64) so one tool call = one chat request for typical
+    /// multi-image use — the llama.cpp frame-merge fix (text separators) makes a
+    /// single request with many images reliable, so no spurious split into several
+    /// requests. Only pathological sets (more than this many images) are split as
+    /// a safety valve for backends that cap images-per-message or truncate large
+    /// payloads. Configurable via VISION_MAX_IMAGES_PER_REQUEST.
+    let private maxImagesPerRequest () =
+        let raw: string =
+            Environment.GetEnvironmentVariable "VISION_MAX_IMAGES_PER_REQUEST"
+            |> Option.ofObj
+            |> Option.defaultValue ""
+        match Int32.TryParse raw with
+        | true, v when v > 0 -> v
+        | _ -> 64
 
     /// JPEG quality used when a downscaled photo is re-encoded: keeps quality
     /// high while keeping the payload small for the vision endpoint.
@@ -280,12 +286,13 @@ module Vision =
     /// (total, start, count) and returns the prompt for that batch.
     let private sendBatched (config: Config) (promptFor: int -> int -> int -> string) (urls: string list) (ct: CancellationToken) : Task<string> = task {
         let total = urls.Length
-        if total <= maxImagesPerRequest then
+        let maxPer = maxImagesPerRequest ()
+        if total <= maxPer then
             return! sendChatCompletion config (promptFor total 1 total) 1 urls ct
         else
             let chunks =
-                [ for start in 1 .. maxImagesPerRequest .. total ->
-                    let count = min maxImagesPerRequest (total - start + 1)
+                [ for start in 1 .. maxPer .. total ->
+                    let count = min maxPer (total - start + 1)
                     (start, urls |> List.skip (start - 1) |> List.take count) ]
             use sem = new SemaphoreSlim(4)
             let sendOne (start: int, chunk: string list) = task {

@@ -30,17 +30,23 @@ environment variables, or pass them per-call as tool arguments:
 
 In the MCP tool schema only `images` is required — an **array** of images (local file paths, http(s) URLs, or data URLs). `endpoint`, `model`, `api_key` and (for `analyze_image`) `prompt` are optional and fall back to their `OPENAI_*` environment variables when omitted. Tool arguments take priority; the environment variables are the fallback.
 
+`VISION_MAX_IMAGES_PER_REQUEST` (optional) caps how many images are sent per chat
+request (default 64 — effectively one request per tool call). Only sets larger than
+this are split into separate requests; see *Multi-image reliability* below.
+
 Both tools accept an **arbitrary number of images** — use it for comparisons, scanning
 several pages, checking multiple screenshots, and so on. `analyze_image` describes each
 image in order and labels them `Image 1:`, `Image 2:`, ... so the model can compare them;
 `ocr_image` extracts the text of each image and labels the extracted text the same way.
 
-For reliability on vision backends that cap images-per-message or truncate large payloads,
-sets of more than **4 images are split into several chat requests** (at most 4 `image_url`
-parts each) and the labeled replies are concatenated in order, so the VLM processes every
-image — no more dropped/subset images on multi-image calls.
+One tool call is sent as a **single chat request** by default (no spurious split),
+so a multi-image `analyze_image`/`ocr_image` call hits the model exactly once.
+Only pathological sets — more than `VISION_MAX_IMAGES_PER_REQUEST` images
+(default 64) — are split into separate chat requests as a safety valve for backends
+that cap images-per-message or truncate large payloads; the labeled replies are then
+concatenated in order, so the VLM still processes every image.
 
-Within each request, every image is preceded by a text marker (`Image N:`). This is the fix
+Within the request, every image is preceded by a text marker (`Image N:`). This is the fix
 for the llama.cpp **frame-merge** bug ([ggml-org/llama.cpp#24303](https://github.com/ggml-org/llama.cpp/issues/24303)):
 consecutive `image_url` parts in one user message get merged into video frames, so the VLM
 sees only a subset of the images (e.g. the last of a 6-image call, or the 2nd of a pair).
@@ -283,8 +289,10 @@ dotnet run --project Build.fsproj -- -t Test   # clean + run the Expecto suite
 The test suite includes unit tests for image loading/validation/downscaling and an
 offline end-to-end test that runs both tools against a local mock OpenAI endpoint,
 including multi-image payloads (one `image_url` part per image) and a regression test
-that splits >4-image calls into separate chat requests so every image is sent exactly once
-and no two `image_url` parts are adjacent (the text-separator / frame-merge fix).
+asserting that a multi-image call is a **single** chat request by default (no spurious
+double request), that >threshold calls still split as a safety valve with every image
+sent exactly once, and that no two `image_url` parts are adjacent (the text-separator /
+frame-merge fix).
 
 ## Real-endpoint smoke test (FAKE task)
 
