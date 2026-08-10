@@ -1,5 +1,5 @@
 group Test
   nuget Expecto
   nuget YoloDev.Expecto.TestSdk
-  nuget SixLabors.ImageSharp
+  nuget Magick.NET-Q16-AnyCPU
   nuget FSharp.Core

@@ -23,8 +23,10 @@ group Main
   nuget ModelContextProtocol.Core 1.2.0
   # Generic host used by FsMcp to build the stdio server
   nuget Microsoft.Extensions.Hosting
-  # Cross-platform image decoding / validation / resizing
-  nuget SixLabors.ImageSharp ~> 3.1
+  # ImageMagick via Magick.NET (Apache-2.0): best-in-class format/quality support.
+  # The Q16-AnyCPU package bundles the native libraries for all platforms (win,
+  # linux, macOS arm64), so the cross-platform global tool works on any OS.
+  nuget Magick.NET-Q16-AnyCPU ~> 14.16
   # Required for Paket-based F# projects (ensures FSharp.Core ships to output)
   nuget FSharp.Core
   # HTTP client is part of the framework (System.Net.Http)
@@ -33,5 +35,5 @@ group Test
   source https://api.nuget.org/v3/index.json
   nuget Expecto ~> 10.2
   nuget YoloDev.Expecto.TestSdk ~> 0.15
-  nuget SixLabors.ImageSharp ~> 3.1
+  nuget Magick.NET-Q16-AnyCPU ~> 14.16
   nuget FSharp.Core

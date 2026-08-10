@@ -2,5 +2,5 @@ group Main
   nuget FsMcp.Server
   nuget ModelContextProtocol
   nuget Microsoft.Extensions.Hosting
-  nuget SixLabors.ImageSharp
+  nuget Magick.NET-Q16-AnyCPU
   nuget FSharp.Core

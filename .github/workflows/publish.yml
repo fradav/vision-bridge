@@ -69,6 +69,10 @@ jobs:
             --store-password-in-clear-text
 
       - name: Install and smoke-test tool
+        # --smoke runs deterministically with NO OpenAI endpoint in this container:
+        # when OPENAI_BASE_URL/OPENAI_MODEL are unset it falls back to a local mock
+        # OpenAI endpoint and still exercises the real image pipeline (load ->
+        # validate -> prepare -> payload -> parse) for every input mode.
         run: |
           dotnet tool install -g vision-bridge
-          vision-bridge --smoke || true
+          vision-bridge --smoke

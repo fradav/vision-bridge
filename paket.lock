@@ -14,6 +14,9 @@ NUGET
       Microsoft.Extensions.Logging.Console (>= 10.0.5)
       ModelContextProtocol (>= 1.2)
       TypeShape (>= 10.0)
+    Magick.NET-Q16-AnyCPU (14.16)
+      Magick.NET.Core (>= 14.16)
+    Magick.NET.Core (14.16)
     Microsoft.Extensions.AI.Abstractions (10.8.3)
     Microsoft.Extensions.Caching.Abstractions (10.0.10)
       Microsoft.Extensions.Primitives (>= 10.0.10)
@@ -147,7 +150,6 @@ NUGET
     ModelContextProtocol.Core (1.2)
       Microsoft.Extensions.AI.Abstractions (>= 10.4.1)
       Microsoft.Extensions.Logging.Abstractions (>= 10.0.5)
-    SixLabors.ImageSharp (3.1.12)
     System.Diagnostics.EventLog (10.0.10)
     TypeShape (10.0)
       FSharp.Core (>= 4.5.4)
@@ -385,7 +387,10 @@ NUGET
     Expecto (10.2.3)
       FSharp.Core (>= 7.0.200) - restriction: >= net6.0
       Mono.Cecil (>= 0.11.4 < 1.0) - restriction: >= net6.0
-    FSharp.Core (10.1.302) - restriction: >= net6.0
+    FSharp.Core (10.1.302)
+    Magick.NET-Q16-AnyCPU (14.16)
+      Magick.NET.Core (>= 14.16) - restriction: >= netstandard2.0
+    Magick.NET.Core (14.16) - restriction: >= netstandard2.0
     Microsoft.ApplicationInsights (3.1.2) - restriction: >= net8.0
       Azure.Monitor.OpenTelemetry.Exporter (>= 1.8) - restriction: || (>= net462) (>= netstandard2.0)
     Microsoft.Bcl.AsyncInterfaces (10.0.10) - restriction: >= net8.0
@@ -490,7 +495,6 @@ NUGET
     OpenTelemetry.PersistentStorage.Abstractions (1.1.1) - restriction: >= net8.0
     OpenTelemetry.PersistentStorage.FileSystem (1.1.1) - restriction: >= net8.0
       OpenTelemetry.PersistentStorage.Abstractions (>= 1.1.1) - restriction: || (>= net462) (>= netstandard2.0)
-    SixLabors.ImageSharp (3.1.12)
     System.ClientModel (1.15) - restriction: >= net8.0
       Microsoft.Extensions.Configuration.Abstractions (>= 10.0.9) - restriction: >= netstandard2.0
       Microsoft.Extensions.Hosting.Abstractions (>= 10.0.9) - restriction: >= netstandard2.0

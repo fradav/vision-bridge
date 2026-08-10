@@ -35,6 +35,18 @@ several pages, checking multiple screenshots, and so on. `analyze_image` describ
 image in order and labels them `Image 1:`, `Image 2:`, ... so the model can compare them;
 `ocr_image` extracts the text of each image and labels the extracted text the same way.
 
+For reliability on vision backends that cap images-per-message or truncate large payloads,
+sets of more than **4 images are split into several chat requests** (at most 4 `image_url`
+parts each) and the labeled replies are concatenated in order, so the VLM processes every
+image — no more dropped/subset images on multi-image calls.
+
+Images are processed with **ImageMagick via Magick.NET** (Apache-2.0; the Q16-AnyCPU package
+bundles the native libraries for every platform). Images that already fit the endpoint's
+dimension limit are passed through **unchanged** (exact original bytes — no re-encode
+artifacts, no quality loss); only oversized images are downscaled with a high-quality
+Lanczos filter and re-encoded (PNG stays lossless PNG, everything else becomes a
+high-quality JPEG).
+
 ```json
 {
   "images": [
@@ -263,7 +275,8 @@ dotnet run --project Build.fsproj -- -t Test   # clean + run the Expecto suite
 
 The test suite includes unit tests for image loading/validation/downscaling and an
 offline end-to-end test that runs both tools against a local mock OpenAI endpoint,
-including multi-image payloads (one `image_url` part per image).
+including multi-image payloads (one `image_url` part per image) and a regression test
+that splits >4-image calls into separate chat requests so every image is sent exactly once.
 
 ## Real-endpoint smoke test (FAKE task)
 
@@ -291,3 +304,11 @@ answer must mention the sign's `TOURVILLE` text) and `ocr_image` with sign + pho
 `analyze_image` returns a non-empty description of the photo, that a custom
 steering prompt is honored, and that `ocr_image` extracts the sign's text. It
 exits non-zero on any failure.
+
+**CI-safe fallback:** when `OPENAI_BASE_URL`/`OPENAI_MODEL` are **not** set (e.g. the
+GitHub Actions container in `.github/workflows/publish.yml`, which has no OpenAI
+endpoint), `--smoke` runs deterministically against a local mock OpenAI endpoint that
+answers `MOCK-OK` — so the **real** image pipeline (load → validate → prepare → payload
+→ parse) is still exercised for every input mode (file, URL, steered, multi-image, OCR)
+without needing a live VLM. That is what the CD workflow's `test-tools` job runs on every
+publish.

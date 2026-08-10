@@ -6,9 +6,9 @@
     <NoWarn>$(NoWarn);NU1510</NoWarn>
     <!-- GitHub Packages / dotnet tool packaging -->
     <PackageId>vision-bridge</PackageId>
-    <Description>An F# vision bridge (FsMcp): an MCP stdio server with multi-image analyze_image / ocr_image tools and an OpenAI-compatible proxy that rewrites images into guided VLM descriptions for a text-only LLM.</Description>
+    <Description>An F# vision bridge (FsMcp): an MCP stdio server with multi-image analyze_image / ocr_image tools (images processed with ImageMagick / Magick.NET) and an OpenAI-compatible proxy that rewrites images into guided VLM descriptions for a text-only LLM.</Description>
     <Authors>fradav</Authors>
-    <PackageTags>mcp;vision;stdio;fsharp;ocr;proxy;openai;fsmcp;multi-image</PackageTags>
+    <PackageTags>mcp;vision;stdio;fsharp;ocr;proxy;openai;fsmcp;multi-image;magick-net;imagemagick</PackageTags>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/fradav/vision-bridge</RepositoryUrl>
     <PackAsTool>true</PackAsTool>
@@ -25,5 +25,7 @@
     <Compile Include="Smoke.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
+  <!-- Keep the Paket restore import OUT of the pack (IsPacking=true) — an
+       unconditional import breaks date-versioned packs in CI (paket fix-nuspecs). -->
   <Import Project="..\..\.paket\Paket.Restore.targets" Condition="'$(IsPacking)' != 'true'" />
 </Project>

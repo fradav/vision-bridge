@@ -7,16 +7,15 @@ open System.Text
 open System.Text.Json.Nodes
 open System.Threading
 open Expecto
-open SixLabors.ImageSharp
-open SixLabors.ImageSharp.PixelFormats
+open ImageMagick
 open VisionBridge
 open VisionBridge.Proxy
 
-/// Generates a PNG of the given dimensions.
+/// Generates a PNG of the given dimensions (via Magick.NET).
 let makePng (w: int) (h: int) : byte[] =
-    use image = new Image<Rgba32>(w, h)
+    use image = new MagickImage(MagickColors.Red, uint32 w, uint32 h)
     use ms = new MemoryStream()
-    image.SaveAsPng ms
+    image.Write(ms, MagickFormat.Png)
     ms.ToArray()
 
 [<Tests>]
@@ -24,17 +23,26 @@ let imageTests =
     testList "Image" [
         test "prepareImageBytes returns a PNG" {
             let png = makePng 64 64
-            let prepared = Vision.prepareImageBytes png
+            let (_, prepared) = Vision.prepareImageBytes png
             Expect.equal prepared[0] 0x89uy "PNG signature byte 0"
             Expect.equal prepared[1] 0x50uy "PNG signature byte 1"
         }
 
+        test "prepareImageBytes passes through images that already fit" {
+            // Images within the dimension limit must be returned unchanged (exact
+            // original bytes) so there is no re-encode artifact or quality loss.
+            let png = makePng 64 64
+            let (mime, prepared) = Vision.prepareImageBytes png
+            Expect.equal mime "image/png" "MIME sniffed from PNG signature"
+            Expect.equal prepared png "fits -> original bytes passed through"
+        }
+
         test "prepareImageBytes downscales large images" {
             let png = makePng 4000 4000
-            let prepared = Vision.prepareImageBytes png
-            use img = Image.Load prepared
-            Expect.isTrue (img.Width <= 1568) "width within limit"
-            Expect.isTrue (img.Height <= 1568) "height within limit"
+            let (_, prepared) = Vision.prepareImageBytes png
+            use img = new MagickImage(prepared)
+            Expect.isTrue (int img.Width <= 1568) "width within limit"
+            Expect.isTrue (int img.Height <= 1568) "height within limit"
         }
 
         test "loadImageBytes fails on a missing file" {
@@ -183,6 +191,77 @@ let integrationTests =
                     |> Async.RunSynchronously
                 Expect.equal r4 "MOCK-OK" "ocr_image with multiple images"
                 Expect.equal (imagePartCount ()) 2 "multi-image OCR payload carries one image part per image"
+            finally
+                cts.Cancel()
+                listener.Stop()
+        )
+
+        testCase "batches more than maxImagesPerRequest images across separate chat requests" (fun () ->
+            // Regression test for the flaky multi-image bug: some vision backends
+            // cap images-per-message or truncate large payloads, so a call with more
+            // images than maxImagesPerRequest must be split into several smaller chat
+            // requests (each <= maxImagesPerRequest image parts) and the labeled
+            // replies concatenated. Every image must still be sent exactly once.
+            use cts = new CancellationTokenSource()
+            use listener = new HttpListener()
+            let port = 8124
+            listener.Prefixes.Add(sprintf "http://127.0.0.1:%d/" port)
+            listener.Start()
+
+            let imageBytes = makePng 64 64
+            let baseUrl = sprintf "http://127.0.0.1:%d" port
+            let chatCount = ref 0
+            let maxParts = ref 0
+            let totalParts = ref 0
+
+            let serveTask =
+                task {
+                    while not cts.IsCancellationRequested do
+                        try
+                            let! ctx = listener.GetContextAsync()
+                            let path = ctx.Request.Url.AbsolutePath
+                            if path = "/image.png" then
+                                ctx.Response.ContentType <- "image/png"
+                                ctx.Response.StatusCode <- 200
+                                ctx.Response.OutputStream.Write(imageBytes, 0, imageBytes.Length)
+                                ctx.Response.Close()
+                            elif path = "/chat/completions" then
+                                use sr = new StreamReader(ctx.Request.InputStream, Encoding.UTF8)
+                                let body = sr.ReadToEnd()
+                                let root = JsonNode.Parse body :?> JsonObject
+                                let messages = root["messages"] :?> JsonArray
+                                let content = (messages[0] :?> JsonObject)["content"] :?> JsonArray
+                                let parts =
+                                    content
+                                    |> Seq.filter (fun p ->
+                                        let o = p :?> JsonObject
+                                        o["type"] <> null && o["type"].GetValue<string>() = "image_url")
+                                    |> Seq.length
+                                chatCount.Value <- chatCount.Value + 1
+                                maxParts.Value <- max maxParts.Value parts
+                                totalParts.Value <- totalParts.Value + parts
+                                let resp = """{"choices":[{"message":{"content":"MOCK-OK"}}]}"""
+                                let bytes = Encoding.UTF8.GetBytes resp
+                                ctx.Response.ContentType <- "application/json"
+                                ctx.Response.StatusCode <- 200
+                                ctx.Response.OutputStream.Write(bytes, 0, bytes.Length)
+                                ctx.Response.Close()
+                            else
+                                ctx.Response.StatusCode <- 404
+                                ctx.Response.Close()
+                        with _ -> ()
+                }
+
+            try
+                let urls = [| for _ in 1 .. 6 -> baseUrl + "/image.png" |]
+                let r =
+                    Vision.analyzeImage urls baseUrl "mock-model" "" "" CancellationToken.None
+                    |> Async.AwaitTask
+                    |> Async.RunSynchronously
+                Expect.equal chatCount.Value 2 "6 images -> 2 chat requests"
+                Expect.isTrue (maxParts.Value <= 4) "each request carries at most 4 image parts"
+                Expect.equal totalParts.Value 6 "every image sent exactly once across requests"
+                Expect.isTrue (r.Contains("MOCK-OK")) "concatenated reply contains the mock answer"
             finally
                 cts.Cancel()
                 listener.Stop()
