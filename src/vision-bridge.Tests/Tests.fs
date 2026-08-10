@@ -213,6 +213,7 @@ let integrationTests =
             let chatCount = ref 0
             let maxParts = ref 0
             let totalParts = ref 0
+            let maxConsec = ref 0
 
             let serveTask =
                 task {
@@ -237,6 +238,20 @@ let integrationTests =
                                         let o = p :?> JsonObject
                                         o["type"] <> null && o["type"].GetValue<string>() = "image_url")
                                     |> Seq.length
+                                // Longest run of CONSECUTIVE image_url parts: must stay 1 so the
+                                // text separator (the llama.cpp frame-merge fix) is present
+                                // between every pair of images.
+                                let consec =
+                                    content
+                                    |> Seq.fold
+                                        (fun (run, best) p ->
+                                            let o = p :?> JsonObject
+                                            let isImg = o["type"] <> null && o["type"].GetValue<string>() = "image_url"
+                                            let nr = if isImg then run + 1 else 0
+                                            (nr, max best nr))
+                                        (0, 0)
+                                    |> snd
+                                maxConsec.Value <- max maxConsec.Value consec
                                 chatCount.Value <- chatCount.Value + 1
                                 maxParts.Value <- max maxParts.Value parts
                                 totalParts.Value <- totalParts.Value + parts
@@ -261,6 +276,7 @@ let integrationTests =
                 Expect.equal chatCount.Value 2 "6 images -> 2 chat requests"
                 Expect.isTrue (maxParts.Value <= 4) "each request carries at most 4 image parts"
                 Expect.equal totalParts.Value 6 "every image sent exactly once across requests"
+                Expect.equal maxConsec.Value 1 "text separator between images (llama.cpp frame-merge fix)"
                 Expect.isTrue (r.Contains("MOCK-OK")) "concatenated reply contains the mock answer"
             finally
                 cts.Cancel()

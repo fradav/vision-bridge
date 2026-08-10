@@ -22,9 +22,11 @@ module Vision =
     /// Maximum number of image_url parts sent in a single chat request. Some
     /// vision backends cap images-per-message or truncate large payloads, which
     /// made multi-image calls flaky (the VLM saw only a subset of the images).
-    /// Larger sets are split into at most this many per request and the labeled
-    /// replies are concatenated, so every request stays small enough that all of
-    /// its images are processed.
+    /// Larger sets are split into at most this many per request, and each image is
+    /// preceded by a text marker so llama.cpp does not frame-merge consecutive
+    /// images (ggml-org/llama.cpp#24303). The labeled replies are then
+    /// concatenated, so every request stays small enough that all of its images
+    /// are processed.
     let private maxImagesPerRequest = 4
 
     /// JPEG quality used when a downscaled photo is re-encoded: keeps quality
@@ -123,7 +125,16 @@ module Vision =
         "data:" + mime + ";base64," + Convert.ToBase64String bytes
 
     /// Builds a chat request carrying the prompt plus one image_url part per image.
-    let private buildPayload (model: string) (prompt: string) (imageDataUrls: string list) : string =
+    /// `startIndex` is the 1-based GLOBAL index of the first image in `imageDataUrls`
+    /// (used when a large set is split into several chat requests).
+    ///
+    /// A text marker is interleaved BEFORE every image part. This is the fix for the
+    /// llama.cpp "frame-merge" bug (ggml-org/llama.cpp#24303): consecutive image_url
+    /// parts in one user message are merged into video frames, so the VLM sees only a
+    /// subset of the images. Inserting a text part between images keeps each one
+    /// independent and reliably processed. The markers also reinforce the global
+    /// `Image N:` labels used by the prompt.
+    let private buildPayload (model: string) (prompt: string) (startIndex: int) (imageDataUrls: string list) : string =
         let root = JsonObject()
         root["model"] <- JsonValue.Create model
 
@@ -137,13 +148,21 @@ module Vision =
         textPart["text"] <- JsonValue.Create prompt
         content.Add textPart |> ignore
 
+        let mutable n = 0
         for url in imageDataUrls do
+            // Text marker before each image (and thus between consecutive images).
+            let marker = JsonObject()
+            marker["type"] <- JsonValue.Create "text"
+            marker["text"] <- JsonValue.Create (sprintf "Image %d:" (startIndex + n))
+            content.Add marker |> ignore
+
             let imgPart = JsonObject()
             imgPart["type"] <- JsonValue.Create "image_url"
             let inner = JsonObject()
             inner["url"] <- JsonValue.Create url
             imgPart["image_url"] <- inner
             content.Add imgPart |> ignore
+            n <- n + 1
 
         userMsg["content"] <- content
         messages.Add userMsg |> ignore
@@ -174,7 +193,8 @@ module Vision =
     }
 
     /// Sends a vision chat request and returns the assistant text reply.
-    let sendChatCompletion (config: Config) (prompt: string) (imageDataUrls: string list) (ct: CancellationToken) : Task<string> = task {
+    /// `startIndex` is the 1-based GLOBAL index of the first image in `imageDataUrls`.
+    let sendChatCompletion (config: Config) (prompt: string) (startIndex: int) (imageDataUrls: string list) (ct: CancellationToken) : Task<string> = task {
         if String.IsNullOrWhiteSpace config.Endpoint then
             failwith "No OpenAI-compatible endpoint configured. Set OPENAI_BASE_URL or pass the 'endpoint' argument."
         if String.IsNullOrWhiteSpace config.Model then
@@ -182,7 +202,7 @@ module Vision =
 
         let baseUrl = config.Endpoint.TrimEnd('/')
         let url = baseUrl + "/chat/completions"
-        let payload = buildPayload config.Model prompt imageDataUrls
+        let payload = buildPayload config.Model prompt startIndex imageDataUrls
 
         use client = new HttpClient()
         client.DefaultRequestHeaders.UserAgent.ParseAdd("vision-bridge/1.0 (+https://github.com/fradav/vision-bridge)")
@@ -261,7 +281,7 @@ module Vision =
     let private sendBatched (config: Config) (promptFor: int -> int -> int -> string) (urls: string list) (ct: CancellationToken) : Task<string> = task {
         let total = urls.Length
         if total <= maxImagesPerRequest then
-            return! sendChatCompletion config (promptFor total 1 total) urls ct
+            return! sendChatCompletion config (promptFor total 1 total) 1 urls ct
         else
             let chunks =
                 [ for start in 1 .. maxImagesPerRequest .. total ->
@@ -272,7 +292,7 @@ module Vision =
                 let! _ = sem.WaitAsync(ct)
                 try
                     let prompt = promptFor total start chunk.Length
-                    return! sendChatCompletion config prompt chunk ct
+                    return! sendChatCompletion config prompt start chunk ct
                 finally
                     sem.Release() |> ignore
             }

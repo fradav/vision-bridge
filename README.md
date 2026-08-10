@@ -40,6 +40,13 @@ sets of more than **4 images are split into several chat requests** (at most 4 `
 parts each) and the labeled replies are concatenated in order, so the VLM processes every
 image — no more dropped/subset images on multi-image calls.
 
+Within each request, every image is preceded by a text marker (`Image N:`). This is the fix
+for the llama.cpp **frame-merge** bug ([ggml-org/llama.cpp#24303](https://github.com/ggml-org/llama.cpp/issues/24303)):
+consecutive `image_url` parts in one user message get merged into video frames, so the VLM
+sees only a subset of the images (e.g. the last of a 6-image call, or the 2nd of a pair).
+Interleaving a text part between images keeps each one independent, so every image is seen
+and described (verified live against `qwen3.6-moe`).
+
 Images are processed with **ImageMagick via Magick.NET** (Apache-2.0; the Q16-AnyCPU package
 bundles the native libraries for every platform). Images that already fit the endpoint's
 dimension limit are passed through **unchanged** (exact original bytes — no re-encode
@@ -276,7 +283,8 @@ dotnet run --project Build.fsproj -- -t Test   # clean + run the Expecto suite
 The test suite includes unit tests for image loading/validation/downscaling and an
 offline end-to-end test that runs both tools against a local mock OpenAI endpoint,
 including multi-image payloads (one `image_url` part per image) and a regression test
-that splits >4-image calls into separate chat requests so every image is sent exactly once.
+that splits >4-image calls into separate chat requests so every image is sent exactly once
+and no two `image_url` parts are adjacent (the text-separator / frame-merge fix).
 
 ## Real-endpoint smoke test (FAKE task)
 
